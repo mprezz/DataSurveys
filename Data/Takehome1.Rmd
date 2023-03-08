@@ -1,0 +1,351 @@
+---
+title: "Takehome 2021-2022"
+author: "Mireia Pérez Martin"
+date: "13/7/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Analista de dates per a l'anàlisi política i la gestió pública
+
+## El despoblament rural
+
+
+### Context social i metodología
+
+Durant els darrers anys, la despoblació a les zones rurals de Catalunya ha sigut un goteig constant. Les persones decideixen abandonar les zones muntanyoses cap altres amb diferents característiques. I es en aquest present informe, on estudiarem a quines zones es concentra el total de la població catalana i analitzarem el per què d'aquest fenòmen a partir d'uns factors.
+A causa d'una extensió i temps materialment limitat, l'informe es centrará en dos apartats desenvolupats a grans trets:
+
+- Densitat de població
+
+- Factors de la despoblació rural
+
+En primer lloc, estudiarem on es concentra la majoria de la població catalana escollint com a base principal els municipis i els grups d'edat. Podriem escollir fer aquesta divisió per altres zones territorials com comarques però, per exactitud de la densitat de població que pot haber en municipis amb una població molt reuida comparat amb d'altres municipis de la mateixa comarca amb gran número de població, estimem oportú seleccionar els municipis com a unitat territorial. A més de la unitat de divisió territorial, la nostra unitat d'anàlisi principal seran els grups d'edat. Aquesta unitat ens permetrà visualitzar on es concentra la població més jove i la població més gran i observar la distribució d'edats entre els diferents municipis.
+
+En segon lloc, a partir del primer anàlisi, estudiarem perquè la població es concentra en certes zones territorials i el perfil d'aquests habitants. Aquest estudi el realitzarem en base a un cert factor: les zones d'explotació turística.
+
+Com informació prèvia, es conegut que Catalunya és una de les Comunitats Autònomes amb major taxa turística d'Espanya. Tant es, que representa el voltant del 12% del PIB total de Catalunya i genera llocs de treball esencialment en el sector de serveis. Per tant, indiquem el turisme com un posible gran factor de la concentració de la població en determinades zones tant per la riquesa aportada com la oferta laboral que genera a més del desenvolupament de benestar social per una major facilitat d'accès a Internet i banda ampla, major ofertes d'oci, etc. En conclusió, analitzarem si el turisme es un factor decisiu que explicaría el despoblament rural. 
+
+
+
+### 1. Densitat de població
+
+#### Les dades de població estan estan extretes de l'Idescat
+
+https://www.idescat.cat/pub/?id=pmh&n=1181&by=mun&lang=es&t=202100
+
+En aquest primer apartat de l'informe compararem la diferència de densitat de població entre l'any 2000 i l'any 2021. Per a una major facilitat d'enteniment, generarem dos mapes interactius per visualitzar la distribució de la població per municipis i grups d'edats.
+
+
+Primer carreguem totes les llibreries necessàries 
+
+```{r message=FALSE}
+
+rm(list=ls())
+
+library("sf")
+library("tidyverse")
+library("dplyr")
+library("stringr")
+library("tmap")
+library("readr")
+library("ggplot2")
+library("stargazer")
+
+```
+
+Obrim el nostre Shaperfile per carregar el mapa de Catalunya 
+
+```{r}
+cat <- st_read("shp/Municipis.shp")
+
+```
+
+Cerquem informació sobre el mapa per poder visualitzar-ho correctament
+
+
+```{r}
+class(cat)
+names(cat)
+summary(cat)
+
+tm_shape(cat) + tm_polygons() + tm_layout(frame = FALSE)
+
+View(cat)
+
+```
+
+Obrim les dades censals de l'any 2021 per grups d'edat
+
+```{r}
+pob2021 <- read_delim("~/Curs expert anàlisi dades/Takehome/Data/pob2021.csv", 
+                      delim = ";", escape_double = FALSE, locale = locale(encoding = "UTF-8"), 
+                      col_types = cols("Total. De 0 a 14 años" = col_number(), 
+                                        "Total. De 15 a 64 años" = col_number(), 
+                                        "Total. 65 años o más" = col_number()), 
+                          trim_ws = TRUE, skip = 5)
+
+View(pob2021)
+
+```
+
+Recodifiquem el nom de les columnes
+
+
+```{r}
+names(pob2021)[names(pob2021) == "Literal"] <- "Municipio"
+names(pob2021)[names(pob2021) == "Código"] <- "Codigo"
+names(pob2021)[names(pob2021) == "Total. De 0 a 14 años"] <- "T0a14años"
+names(pob2021)[names(pob2021) == "Total. De 15 a 64 años"] <- "T15a64años"
+names(pob2021)[names(pob2021) == "Total. 65 años o más"] <- "T65ymas"
+
+View(pob2021)
+
+```
+
+Suprimim la xifra final del "Codigo" i fem que els valors tinguin 5 xifres per tenir els mateixos valors les bases
+
+```{r}
+pob2021$Codigo <- substr(pob2021$Codigo, 1, 5)  
+
+View(pob2021)
+
+```
+
+
+Afegim una nova columna que sumi les tres columnes de grups d'edat
+
+```{r}
+pob2021$Totalpob2021 = rowSums(pob2021[,c("T0a14años", "T15a64años", "T65ymas")])
+
+```
+
+Fusionem el shapefile i la base de dades de població 2021
+
+```{r}
+cat <- cat %>% 
+  left_join(.,pob2021, by="Codigo") 
+
+View(cat)
+
+```
+
+Creem un mapa interactiu
+
+```{r}
+tmap_mode("view")
+
+# També seleccionem els grups d'edat per veure la seva distribució pel mapa
+
+tm_shape(cat) +
+  tm_polygons(c("Totalpob2021", "T0a14años", "T15a64años", "T65ymas"),
+              title = c("Habitants - Total població",
+                        "Habitants - Grup 0-14 anys",
+                        "Habitants - Grup 15-64 anys",
+                        "Habitants - Grup + 65 anys"),
+          breaks = c(0,5000,10000,50000,1200000),
+          palette = "YlOrBr") +
+  tm_layout(title = c("Despoblament rural l'any 2021"))
+
+```
+
+```{r}
+
+```
+
+MAPA INTERACTIU: Al fer click sobre els municipis del mapa interactiu, podem veure els codis postals i el número d'habitants per grups d'edat. 
+
+Hem seleccionat les tres franges d'edat i les dividim segons unes determinades quantitats d'habitants que considerem oportunes ja que ens volem fixar en els dos extrems: sobrepoblació i despoblació. 
+
+Podem observar que la majoría de la població es concentra a les grans ciutats, sobretot arran la costa i els seus voltants. També crida l'atenció que a totes tres franges d'edat hi ha una concentració de població a la comarca del Segrià (concretament al municipi de LLeida) i la Vall d'Aran. Posteriorment observarem si aquesta excepció podría estar relacionada amb el turisme, l'oferta d'ocupacio i/o l'accès a la banda ampla (Internet). Si observem el mapa interactiu de cada grup d'edat podem interpretar:
+
+- Al grup dels més joves (0-14 anys), la despoblació en les zones d'interior es molt notable i donat que son les projeccions futures, pot indicar una continuitat de la tendència de despoblament de les zones rurals cap a les grans ciutats, sobretot marítimes com Barcelona i els seus voltants: Badalona, Lloret de Mar, Cornellà, Sitges (comarques de Barcelona, Baix Llobregat, Maresme) etc.
+
+- El grup de població activa (15-64 anys) és la franja més nombrosa i a la vegada més distribuïda pel mapa català però com a la resta de grups, la població es concentra a les grans ciutats properes al mar i la capital, tot i que també guanya importància l'expansió cap els municipis del voltant: Cerdanyola del Vallès, Vilafranca del Penedès, Manresa, etc. 
+
+- El grup de jubilats (+65 anys), segueix una tendència semblant al grup de joves amb un lleuger major número d'habitants a zones de l'interior (destaquen Lleida i Tremp).
+
+
+Tornem a obrir el shapefile per fusionar amb altra data frame
+
+```{r}
+cat2 <- st_read("shp/Municipis.shp")
+
+
+```
+
+
+Obrim les dades censals de l'any 2000 per grups d'edat
+
+```{r}
+pob2000 <- read_delim("~/Curs expert anàlisi dades/Takehome/Data/pob2000.csv", 
+                      delim = ";", escape_double = FALSE, 
+                      col_types = cols("Total. De 0 a 14 años" = col_number(), 
+                                        "Total. De 15 a 64 años" = col_number(), 
+                                        "Total. 65 años o más" = col_number()), 
+                          trim_ws = TRUE, skip = 5)
+
+View(pob2000)
+
+```
+
+
+Recodifiquem el nom de les columnes
+
+```{r}
+names(pob2000)[names(pob2000) == "Literal"] <- "Municipio"
+names(pob2000)[names(pob2000) == "Código"] <- "Codigo"
+names(pob2000)[names(pob2000) == "Total. De 0 a 14 años"] <- "T0a14años"
+names(pob2000)[names(pob2000) == "Total. De 15 a 64 años"] <- "T15a64años"
+names(pob2000)[names(pob2000) == "Total. 65 años o más"] <- "T65ymas"
+
+View(pob2000)
+
+```
+
+Suprimim la xifra final del "Codigo" i fem que els valors tinguin 5 xifres per tenir els mateixos valors les bases
+
+```{r}
+pob2000$Codigo <- substr(pob2000$Codigo, 1, 5)  
+
+View(pob2000)
+
+```
+
+
+Afegim una nova columna que sigui la suma dels tres grups d'edat
+
+```{r}
+pob2000$Totalpob2000 = rowSums(pob2000[,c("T0a14años", "T15a64años", "T65ymas")])
+```
+
+
+Fusionem el shapefile i la base de dades del cens de l'any 2000
+
+```{r}
+cat2 <- cat2 %>% 
+  left_join(.,pob2000, by="Codigo") 
+
+View(cat2)
+
+```
+
+
+Creem un mapa interactiu amb les mateixes dades que el mapa de l'any 2021
+
+```{r}
+tmap_mode("view")
+
+tm_shape(cat2) +
+  tm_polygons(c("Totalpob2000", "T0a14años", "T15a64años", "T65ymas"),
+              title = c("Habitants - Total població", 
+                        "Habitants - Grup 0-14 anys",
+                        "Habitants - Grup 15-64 anys",
+                        "Haabitants - Grup + 65 anys"),
+              breaks = c(0,5000,10000,50000,1200000),
+              palette = "YlOrBr") +
+  tm_layout(title = "Despoblament rural l'any 2000")
+
+```
+
+
+```{r}
+
+```
+MAPA INTERACTIU: Al fer click sobre els municipis del mapa interactiu, podem veure els codis postals i el número d'habitants per grups d'edat. 
+
+
+En comparació amb l'any 2021, podem observar que durant el 2000 els municipis del voltant de Barcelona no estaven tan sobrepoblats com per exemple Gavà, i en canvi, municipis de la Catalunya central com Manresa hi havia una major concentració de població a la ciutats i altres municipis limítrofes.
+
+
+- Al grup dels més joves (0-14 anys), la despoblació en les zones d'interior ja era palpable fa vint anys però observem que no hi ha una força quantitat d'habitants als municipis barcelonins, ni els municipis de la comarca del Maresme, Baix Llobregat i el Garraf. En canvi, cap el 2021 es veu un creixement exponencial en aquests territoris per part de la població més jove. 
+
+- El grup de població activa (15-64 anys) és la franja que es concentra pràcticament a Barcelona i en menor mesura els municipis del voltant però no de manera exponencial com ocorre al creixement del 2021. El cas del municipi de LLeida, veiem com pren força amb els anys i sobretot, els territoris del voltant.  
+
+- El grup de jubilats (+65 anys) l'any 2000 es molt menys nombròs i es concentra bàsicament a Barcelona i distribuit per tot el territori català, doncs no hi ha gaire municipis amb alta densitat com sí hi ha l'any 2021. 
+
+
+
+
+
+Per aconseguir una interpretació més detallada, creem un subset per generar una dos noves variables on contingui únicament els municipis amb menys de 500 habitants l'any 2000 i l'any 2021
+
+
+```{r}
+
+subset(cat, Totalpob2021 < 500)
+subtotal <- subset(cat, (Totalpob2021 < 500))
+subtotal
+
+
+subset(cat2, Totalpob2000 < 500)
+
+subtotal2 <-  subset(cat2, (Totalpob2000 < 500))
+subtotal2
+
+
+```
+Com podem observar, el 2000 hi havia 359 municipis amb menys de 500 habitants, en canvi, l'any 2021 aquesta xifra va ser de 332. Per tant, hi ha una tendència de despoblament de municipis petits cap a altres de major densitat i en conseqüència, una pèrdua de vida rural ja que la població viu cada vegada menys en municipis petits. 
+
+
+### 2. Factors de la despoblació rural
+
+Com haviem comentat, donat el temps limitat d'estudi ens centrarem en un únic factor com posible causant de la despoblació rural. Aquest factor és: el sector turístic. Com ens podrem imaginar, les zones més turístiques i/o que s'han adaptat al turisme provoquen creixements colaterals en altres factors, doncs competeixen per maximitzar el benestar i l'economía. Per tant, el turisme podría provocar un creixement de l'oferta d'ocupació i també podría afectar en temes com: la facilitat de connexió a internet i banda ampla, l'oferta d'oci i cultura, la proximitat de centres sanitaris, etc. Y per tant, tots aquests factors provocaríen que la població es vulgui concentrar en zones on la seva qualitat i condicions de vida són molt més desitjables i còmodes. 
+
+
+Per analitzar si el turisme provoca una migració cap a les ciutats, agafarem dades en base els establiments hotelers que es distribueixen per tota Catalunya dividits per municipis. 
+
+
+Analitzem si hi ha relació entre el municipi y la població total de Catalunya i per tant, provoca despoblament rural:
+
+```{r}
+ols.codi.total <- lm(Codigo ~ Totalpob2021, data= cat)
+summary(ols.codi.total)
+stargazer(ols.codi.total, type="text")
+
+```
+
+Com podem observar, totes dues variables tenen un efecte petit i la R es molt baixa. L'efecte del municipi únicament explica un 0,6% de la població total de Catalunya. 
+Hem de seguir millorant el model. En aquest cas, mirarem si el turisme es més estadísticament significatiu. 
+
+
+Carreguem la base de dades d'establiments turístics l'any 2020:
+
+```{r}
+turisme <- read_delim("~/Curs expert anàlisi dades/Takehome/Data/turisme.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE, 
+    skip = 5)
+View(turisme)
+
+names(turisme)[names(turisme) == "Codi"] <- "Codigo"
+names(turisme)[names(turisme) == "Total"] <- "TurismeTotal"
+
+turisme$Codigo <- substr(turisme$Codigo, 1, 5)  
+
+cat <- cat %>% 
+  left_join(.,turisme, by="Codigo") 
+
+View(cat)
+
+```
+
+Afegim la variable de turisme total a les variables de població total i codi de municipi
+
+```{r}
+ols.turisme.total <- lm(Codigo ~ Totalpob2021 + TurismeTotal, data=cat)
+summary(ols.turisme.total)
+stargazer(ols.codi.total, ols.turisme.total, type= "text")
+
+```
+
+Les estimacions resultants canvien completament la conclusió sobre l'efecte del municipi envers la població catalana que haviem calculat en un principi. El fet de que hagi establiments hotelers pels municipis es bastant significatiu en quant l'efecte del despoblament rural. 
+
+D'altra banda, el valor de la Constant gairebé no canvia i mostra una gran significativitat dels municipis (Codigos) en el efecte de la densitat de població (despoblament rural).
+
+En conclusió, podem observar que passem d'un 0,6% a 1,7% en p. Per tant, que filtrem la densitat de població per el número d'establiments hotelers ens explica més sobre els resultats de l'estudi. A més, si continuesim afegint factors com: nivell d'ocupació, disponbilitat de TIC, oferta d'oci i cultura, disponibilitat de centres sanitaris, etc. Pero donada la longuitud d'aquest estudi, concluirem l'estudi amb els factors analitzats. 
+
